@@ -23,8 +23,16 @@ def connectSocket():
   #client.sendall(clientMessage.encode())
 
   while True:
-    serverMessage = str(client.recv(1024), encoding='utf-8')
-    print('Server:', serverMessage)
+    try:
+        serverMessage = str(client.recv(1024), encoding='utf-8')
+        if len(serverMessage) > 0:
+          print('Server:', serverMessage)
+        else:
+          print('Receive error, len:', len(serverMessage))
+          break
+    except socket.error as e:
+        print ("Error receiving data: %s",  e)
+        break
 
 
 socket_t = threading.Thread(target = connectSocket)

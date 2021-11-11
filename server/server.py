@@ -44,7 +44,6 @@ while True:
   elif message == 'list':
     print(client_list)
   else:
-    print(message)
     for client in client_list:
        try:
          client.sendall(message.encode())
@@ -55,6 +54,9 @@ while True:
 
 ########################################################################
 
+
+for client in client_list:
+  client.close()
 mSocketServer.terminate()
 
 print("DONE")
