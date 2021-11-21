@@ -11,9 +11,9 @@ import threading
 #PORT = 1102
 #client_list = []
 
-class ServerSocketThread(threading.Thread):
+class ServerSocket(threading.Thread):
     def __init__(self, daemon=None):
-        super(ServerSocketThread, self).__init__(daemon=daemon)
+        super(ServerSocket, self).__init__(daemon=daemon)
         self.__is_running = True
         self.daemon = daemon
         self.client_list = []
@@ -74,7 +74,7 @@ class ServerSocketThread(threading.Thread):
 
 
 if __name__ == '__main__':
-    mServerSocket = ServerSocketThread(True)
+    mServerSocket = ServerSocket(True)
     mServerSocket.start()
     ########################################################################
     # TODO
