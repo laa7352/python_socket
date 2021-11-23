@@ -25,8 +25,13 @@ class ClientSocket(threading.Thread):
         self.onReceive = onReceive
 
     def terminate(self):
-        if self.socket != None:
-            self.socket.close()
+        try:
+            if self.socket:
+                print("ClientSocket.terminate close socket")
+                self.socket.shutdown(2)
+                self.socket.close()
+        except Exception as e:
+            print("ClientSocket.terminate exception:", e)
 
         self.socket = None
         self.__is_running = False

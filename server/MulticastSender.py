@@ -56,6 +56,7 @@ class MulticastSender(threading.Thread):
 
         # For Python 3, change next line to 'sock.sendto(b"robot", ...' to avoid the
         # "bytes-like object is required" msg (https://stackoverflow.com/a/42612820)
+        print("Multicast sender is started")
         while True:
             DeviceInfoStr = json.dumps(self.getDeviceInfo())
             sock.sendto(DeviceInfoStr.encode(encoding="utf-8"), (MCAST_GRP, MCAST_PORT))

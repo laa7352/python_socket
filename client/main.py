@@ -19,7 +19,6 @@ if __name__ == '__main__':
     ######################################################################## 
     # UI
     def connect():
-        logOutput['text'] = 'connect to ' + hostText.get() + ':' + portText.get()
         Host = hostText.get()
         Port = int(portText.get())
 
@@ -27,8 +26,11 @@ if __name__ == '__main__':
 
         print("test", mClientSocket)
         if mClientSocket and mClientSocket.STATUS <= 2:
+            print("do disconnect")
             disconnectClientSocket()
         elif Host and Port:
+            print("do connect")
+            logOutput['text'] = 'connect to ' + Host + ':' + str(Port) + '\n'
             connectClientSocket(Host, Port)
 
     # combobox
@@ -68,9 +70,9 @@ if __name__ == '__main__':
     uiRow+=1
 
     # Log
-    tk.Label(root, text="Log:").grid(row=uiRow, column=0, rowspan=10, stick="N")
-    logOutput = tk.Label(root, text="")
-    logOutput.grid(row=uiRow, column=1, rowspan=10, stick="N")
+    #tk.Label(root, text="Log:").grid(row=uiRow, column=0, rowspan=10, stick="N")
+    logOutput = tk.Label(root, text="", justify = 'right')
+    logOutput.grid(row=uiRow, column=0, rowspan=10, columnspan=3, stick="E")
     uiRow+=1
 
     ######################################################################## 
@@ -150,6 +152,7 @@ if __name__ == '__main__':
 
     def onClientSocketReceive(data):
         print('Server:', data)
+        logOutput['text'] += data + '\n'
 
     def connectClientSocket(Host, Port):
         global mClientSocket
@@ -158,6 +161,7 @@ if __name__ == '__main__':
 
     def disconnectClientSocket():
         global mClientSocket
+        print("disconnectClientSocket", mClientSocket)
         if mClientSocket:
             mClientSocket.terminate()
 
