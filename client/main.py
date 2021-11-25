@@ -5,6 +5,7 @@ import time
 import json
 from MulticastReceiver import MulticastReceiver
 from ClientSocket import ClientSocket
+from enum import Enum
 
 if __name__ == '__main__':
     root = tk.Tk()
@@ -16,6 +17,18 @@ if __name__ == '__main__':
     mMulticastReceiver = None
     mClientSocket = None
 
+    ############################################
+    # command
+    class CommandList():
+        SET_PORT = 1
+        SET_DEVICENAME = 2
+        GET_ALL_TELEMETRY = 3
+
+    def getCommand(command):
+        CommandTemple = json.loads('{"command": 0}')
+        CommandTemple["command"] = command
+        return CommandTemple
+
     ######################################################################## 
     # UI
     def connect():
@@ -24,7 +37,6 @@ if __name__ == '__main__':
 
         global mClientSocket
 
-        print("test", mClientSocket)
         if mClientSocket and mClientSocket.STATUS <= 2:
             print("do disconnect")
             disconnectClientSocket()
@@ -39,6 +51,12 @@ if __name__ == '__main__':
         print(index, DeviceInfoList[index]['Host'], DeviceInfoList[index]['Port'])
         hostText.set(DeviceInfoList[index]['Host'])
         portText.set(str(DeviceInfoList[index]['Port']))
+
+    def get_all_telemetry():
+        command = getCommand(CommandList.GET_ALL_TELEMETRY)
+        global mClientSocket
+        if mClientSocket and mClientSocket.STATUS == ClientSocket.CONNECTED:
+            mClientSocket.sendall(json.dumps(command).encode())
 
     serverList = ttk.Combobox(root, values=[], state='readonly')
     serverList.grid(row=uiRow, column=0, columnspan=3)
@@ -68,10 +86,14 @@ if __name__ == '__main__':
     connectBTN = tk.Button(text="Connect", width=10, command=connect)
     connectBTN.grid(row=uiRow, columnspan=2, pady=5)
     uiRow+=1
+    ##### get_all_telemetry()
+    getAllTelemetrytBTN = tk.Button(text="Get All Telemetry", command=get_all_telemetry)
+    getAllTelemetrytBTN.grid(row=uiRow, column=0, pady=5)
+    uiRow+=1
 
     # Log
     #tk.Label(root, text="Log:").grid(row=uiRow, column=0, rowspan=10, stick="N")
-    logOutput = tk.Label(root, text="", justify = 'right')
+    logOutput = tk.Label(root, text="", justify = 'left', wraplength='400')
     logOutput.grid(row=uiRow, column=0, rowspan=10, columnspan=3, stick="E")
     uiRow+=1
 
@@ -164,6 +186,8 @@ if __name__ == '__main__':
         print("disconnectClientSocket", mClientSocket)
         if mClientSocket:
             mClientSocket.terminate()
+
+
 
     ############################################
     root.mainloop()
