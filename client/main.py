@@ -6,6 +6,8 @@ import json
 from MulticastReceiver import MulticastReceiver
 from ClientSocket import ClientSocket
 from enum import Enum
+import matplotlib.pyplot as plt
+import numpy as np
 
 if __name__ == '__main__':
 	root = tk.Tk()
@@ -23,6 +25,7 @@ if __name__ == '__main__':
 		SET_PORT = 1
 		SET_DEVICENAME = 2
 		GET_ALL_TELEMETRY = 3
+		GET_MEASURE = 4
 
 	def getCommand(command):
 		CommandTemple = json.loads('{"command": 0}')
@@ -58,6 +61,18 @@ if __name__ == '__main__':
 		if mClientSocket and mClientSocket.STATUS == ClientSocket.CONNECTED:
 			mClientSocket.sendall(json.dumps(command).encode())
 
+	def get_measure():
+		command = getCommand(CommandList.GET_MEASURE)
+		command["acc_range"] = "16G"
+		command["sampling_f"] = 12800  # 12800Hz
+		command["sampling_s"] = 128000 # 12800 x 10 sec
+		global mClientSocket
+		if mClientSocket and mClientSocket.STATUS == ClientSocket.CONNECTED:
+			try:
+				mClientSocket.sendall(json.dumps(command).encode())
+			except Exception as e:
+				print("error:", e)
+
 	serverList = ttk.Combobox(root, values=[], state='readonly')
 	serverList.grid(row=uiRow, column=0, columnspan=3)
 	serverList.bind("<<ComboboxSelected>>", onComboxSelected)
@@ -89,6 +104,8 @@ if __name__ == '__main__':
 	##### get_all_telemetry()
 	getAllTelemetrytBTN = tk.Button(text="Get All Telemetry", command=get_all_telemetry)
 	getAllTelemetrytBTN.grid(row=uiRow, column=0, pady=5)
+	getAllTelemetrytBTN = tk.Button(text="Get Measure", command=get_measure)
+	getAllTelemetrytBTN.grid(row=uiRow, column=1, pady=5)
 	uiRow+=1
 
 	# Log
@@ -146,8 +163,7 @@ if __name__ == '__main__':
 		serverList['values'] = list
 		serverList['width'] = maxWidth
 
-	checkDeviceInfosThread = threading.Thread(target = checkDeviceInfos)
-	checkDeviceInfosThread.setDaemon(True)
+	checkDeviceInfosThread = threading.Thread(target = checkDeviceInfos, daemon=True)
 	checkDeviceInfosThread.start()
 
 	mMulticastReceiver = MulticastReceiver(True, onMulticastReceive)
@@ -173,8 +189,25 @@ if __name__ == '__main__':
 		print(status)
 
 	def onClientSocketReceive(data):
-		print('Server:', data)
-		logOutput['text'] += data + '\n'
+		print('receive data from Server, length:', len(data))
+		#print('Server:', data)
+		#logOutput['text'] += data + '\n'
+		try:
+			obj = json.loads(data)
+			print("ClientSocketReceive", obj["command"])
+			if obj["command"] == CommandList.GET_MEASURE:
+				print("ClientSocketReceive", obj["command"])
+				#print("x:", obj["result"][0])
+				#print("y:", obj["result"][1])
+				#print("z:", obj["result"][2])
+				#N = 10
+				#T = 1.0 / 12800.0
+				#y_f = np.fft.fft(obj["result"][0])
+				#x_f = np.linspace(0.0, 100,10)
+				#plt.plot(x_f, y_f)
+				#plt.show()
+		except Exception as e:
+			print("json parsing error", e)
 
 	def connectClientSocket(Host, Port):
 		global mClientSocket
