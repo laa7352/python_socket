@@ -55,7 +55,7 @@ class ClientSocket(threading.Thread):
 	def receive(self):
 		while True:
 			try:
-				serverMessage = str(self.socket.recv(1024), encoding='utf-8')
+				serverMessage = str(self.socket.recv(2048), encoding='utf-8')
 				if len(serverMessage) > 0:
 					self.onReceive(serverMessage)
 				else:

@@ -1,124 +1,137 @@
-import tkinter as tk
-import tkinter.ttk as ttk
+from PyQt5 import QtWidgets, QtGui, QtCore
+from WiredDeviceUI import Ui_MainWindow
+import numpy as np
+import json
 import threading
 import time
-import json
-from MulticastReceiver import MulticastReceiver
-from ClientSocket import ClientSocket
 from enum import Enum
-import matplotlib.pyplot as plt
-import numpy as np
+from ClientSocket import ClientSocket
+from MulticastReceiver import MulticastReceiver
+import pyqtgraph
 
-if __name__ == '__main__':
-	root = tk.Tk()
-	root.title("Python socket")
-	root.geometry("600x400")
-	uiRow=0
+class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
+	delegate = {
+		"restartMulticastReceiver": None,
+		"connectServer": None,
+		}
 
+	DrawData = None
+	Y_AXIS_Data_X = None
+	Y_AXIS_Data_Y = None
+	Y_AXIS_Data_Z = None
+	X_AXIS = None
+
+	def __init__(self):
+		super().__init__()
+		self.setupUi(self)
+		self.DrawTestBTN.clicked.connect(self.drawTest)
+		self.DrawClearBTN.clicked.connect(self.clear)
+		self.HostList.activated.connect(self.onHostClick)
+		self.RefreshHostListBTN.clicked.connect(self.RefresHostList)
+		self.ConnectBTN.clicked.connect(self.connectServer)
+
+		self.onlyInt = QtGui.QIntValidator()
+		self.PortNumber.setValidator(self.onlyInt)
+
+		ipRange = "(?:[0-1]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])"   # Part of the regular expression
+		# Regulare expression
+		ipRegex = QtCore.QRegExp("^" + ipRange + "\\." + ipRange + "\\." + ipRange + "\\." + ipRange + "$")
+		ipValidator = QtGui.QRegExpValidator(ipRegex, self)
+		self.HostName.setValidator(ipValidator)
+
+		self.SampleSize.setValidator(self.onlyInt)
+
+		self.GetMeasureBTN.clicked.connect(self.GetMeasure)
+		self.DrawXBTN.clicked.connect(lambda: self.Draw(self.X_AXIS, self.Y_AXIS_Data_X, pyqtgraph.mkPen(color='w')))
+		self.DrawYBTN.clicked.connect(lambda: self.Draw(self.X_AXIS, self.Y_AXIS_Data_Y, pyqtgraph.mkPen(color='r')))
+		self.DrawZBTN.clicked.connect(lambda: self.Draw(self.X_AXIS, self.Y_AXIS_Data_Z, pyqtgraph.mkPen(color='b')))
+		self.DrawXBTN.setEnabled(False)
+		self.DrawYBTN.setEnabled(False)
+		self.DrawZBTN.setEnabled(False)
+
+	def updateHostList(self, list):
+		self.HostList.clear()
+		for info in list:
+			infoStr = info["DeviceName"] + '(' + info["Host"] + ':' + str(info["Port"]) + ')'
+			self.HostList.addItem(infoStr)
+
+	def onHostClick(self):
+		index = self.HostList.currentIndex()
+		self.HostName.setText(DeviceInfoList[index]["Host"])
+		self.PortNumber.setText(str(DeviceInfoList[index]["Port"]))
+
+	def RefresHostList(self):
+		# Restart MulticastReceiver
+		if self.delegate["restartMulticastReceiver"]:
+			self.delegate["restartMulticastReceiver"]()
+
+	def onStatusChange(self, statusStr, btnStr):
+		self.ConnectionStatus.setText(statusStr)
+		self.ConnectBTN.setText(btnStr)
+
+	def connectServer(self):
+		if self.delegate["connectServer"]:
+			self.delegate["connectServer"]()
+
+	def getHostName(self):
+		return self.HostName.text()
+
+	def getPortNumber(self):
+		return int(self.PortNumber.text())
+
+	def GetMeasure(self):
+		acc = self.Acc.currentText()
+		sampling_f = int(self.SampleFreq.currentText())
+		sampling_s = int(self.SampleSize.text())
+		if self.delegate["GetMeasure"] and acc and sampling_f and sampling_s:
+			self.delegate["GetMeasure"](acc, sampling_f, sampling_s)
+
+	def Draw(self, x, y, pen):
+		self.graphicsView.plot(x, y, pen=pen)
+
+	def SetDrawData(self, obj):
+		DrawData = obj
+		N = obj["sampling_s"]  # sampling_s = 128000
+		T = 1.0 / float(obj["sampling_f"]) # sampling_f = 12800
+		self.X_AXIS = np.linspace(0.0, N*T, N)
+
+		yx = obj["result"][0] # x data
+		yx_f = np.fft.fft(yx)
+		self.Y_AXIS_Data_X = 1.0/N * np.abs(yx_f[:N//1])
+
+		yy = obj["result"][1] # y data
+		yy_f = np.fft.fft(yy)
+		self.Y_AXIS_Data_Y = 1.0/N * np.abs(yy_f[:N//1])
+
+		yz= obj["result"][2] # z data
+		yz_f = np.fft.fft(yz)
+		self.Y_AXIS_Data_Z = 1.0/N * np.abs(yz_f[:N//1])
+		self.DrawXBTN.setEnabled(True)
+		self.DrawYBTN.setEnabled(True)
+		self.DrawZBTN.setEnabled(True)
+
+	def drawTest(self):
+		x = np.random.normal(size=1000)
+		y = np.random.normal(size=(3,1000))
+		for i in range(3):
+			self.graphicsView.plot(x, y[i], pen=(i,3))
+
+	def clear(self):
+		self.graphicsView.clear()
+
+
+if __name__ == "__main__":
+	import sys
+	app = QtWidgets.QApplication(sys.argv)
+	window = MainWindow()
+
+	########################################################################	
+	# Multicast
 	DeviceInfoList = []
-	mMulticastReceiver = None
-	mClientSocket = None
-
-	############################################
-	# command
-	class CommandList():
-		SET_PORT = 1
-		SET_DEVICENAME = 2
-		GET_ALL_TELEMETRY = 3
-		GET_MEASURE = 4
-
-	def getCommand(command):
-		CommandTemple = json.loads('{"command": 0}')
-		CommandTemple["command"] = command
-		return CommandTemple
-
-	######################################################################## 
-	# UI
-	def connect():
-		Host = hostText.get()
-		Port = int(portText.get())
-
-		global mClientSocket
-
-		if mClientSocket and mClientSocket.STATUS <= 2:
-			print("do disconnect")
-			disconnectClientSocket()
-		elif Host and Port:
-			print("do connect")
-			logOutput['text'] = 'connect to ' + Host + ':' + str(Port) + '\n'
-			connectClientSocket(Host, Port)
-
-	# combobox
-	def onComboxSelected(*args):
-		index = serverList.current()
-		print(index, DeviceInfoList[index]['Host'], DeviceInfoList[index]['Port'])
-		hostText.set(DeviceInfoList[index]['Host'])
-		portText.set(str(DeviceInfoList[index]['Port']))
-
-	def get_all_telemetry():
-		command = getCommand(CommandList.GET_ALL_TELEMETRY)
-		global mClientSocket
-		if mClientSocket and mClientSocket.STATUS == ClientSocket.CONNECTED:
-			mClientSocket.sendall(json.dumps(command).encode())
-
-	def get_measure():
-		command = getCommand(CommandList.GET_MEASURE)
-		command["acc_range"] = "16G"
-		command["sampling_f"] = 12800  # 12800Hz
-		command["sampling_s"] = 128000 # 12800 x 10 sec
-		global mClientSocket
-		if mClientSocket and mClientSocket.STATUS == ClientSocket.CONNECTED:
-			try:
-				mClientSocket.sendall(json.dumps(command).encode())
-			except Exception as e:
-				print("error:", e)
-
-	serverList = ttk.Combobox(root, values=[], state='readonly')
-	serverList.grid(row=uiRow, column=0, columnspan=3)
-	serverList.bind("<<ComboboxSelected>>", onComboxSelected)
-	uiRow+=1
-
-	# Server IP
-	tk.Label(root, text="Server IP").grid(row=uiRow, stick="w")
-	hostText = tk.StringVar()
-	hostInput = tk.Entry(root, textvariable = hostText)
-	hostInput.grid(row=uiRow, column=1)
-	uiRow+=1
-	# Port
-	tk.Label(root, text="Port").grid(row=uiRow, stick="w")
-	portText = tk.StringVar()
-	portInput = tk.Entry(root, textvariable = portText)
-	portInput.grid(row=uiRow, column=1)
-	uiRow+=1
-
-	# Status
-	tk.Label(root, text="Status").grid(row=uiRow)
-	statusText = tk.Label(root, text="DISCONNECT")
-	statusText.grid(row=uiRow, column=1)
-	uiRow+=1
-
-	# Button
-	connectBTN = tk.Button(text="Connect", width=10, command=connect)
-	connectBTN.grid(row=uiRow, columnspan=2, pady=5)
-	uiRow+=1
-	##### get_all_telemetry()
-	getAllTelemetrytBTN = tk.Button(text="Get All Telemetry", command=get_all_telemetry)
-	getAllTelemetrytBTN.grid(row=uiRow, column=0, pady=5)
-	getAllTelemetrytBTN = tk.Button(text="Get Measure", command=get_measure)
-	getAllTelemetrytBTN.grid(row=uiRow, column=1, pady=5)
-	uiRow+=1
-
-	# Log
-	#tk.Label(root, text="Log:").grid(row=uiRow, column=0, rowspan=10, stick="N")
-	logOutput = tk.Label(root, text="", justify = 'left', wraplength='400')
-	logOutput.grid(row=uiRow, column=0, rowspan=10, columnspan=3, stick="E")
-	uiRow+=1
-
-	######################################################################## 
-	# MulticastReceiver
 	def onMulticastReceive(data):
 		try:
 			DeviceInfo = json.loads(data)
+			#print("Receive: ", DeviceInfo)
 			maintainDeviceInfos(True, DeviceInfo)
 		except Exception as e:
 			print("parsing json error", e)
@@ -129,14 +142,14 @@ if __name__ == '__main__':
 			isExisted = False
 			for info in DeviceInfoList:
 				if DeviceInfo["Host"] == info["Host"] and DeviceInfo["Port"] == info["Port"]:
-						info["Timeout"] = 0
-						info["DeviceName"] = DeviceInfo["DeviceName"]
-						isExisted = True
-						break
+					info["Timeout"] = 0
+					info["DeviceName"] = DeviceInfo["DeviceName"]
+					isExisted = True
+					break
 			if not isExisted:
 				DeviceInfo["Timeout"] = 0
 				DeviceInfoList.append(DeviceInfo)
-				updateCombobox()
+				updateHostList()
 		else:
 			for info in DeviceInfoList:
 				info["Timeout"] += 1
@@ -144,7 +157,7 @@ if __name__ == '__main__':
 					removeList.append(info)
 			for info in removeList:
 				DeviceInfoList.remove(info)
-				updateCombobox()
+				updateHostList()
 		#print(DeviceInfoList)
 
 	def checkDeviceInfos():
@@ -152,24 +165,22 @@ if __name__ == '__main__':
 			maintainDeviceInfos(False, None)
 			time.sleep(1)
 
-	def updateCombobox():
-		list = []
-		maxWidth = 20
-		for info in DeviceInfoList:
-			DeviceInfostr = info["DeviceName"] + '(' + info["Host"] + ':' + str(info["Port"]) + ')'
-			if len(DeviceInfostr) >= maxWidth:
-				maxWidth = len(DeviceInfostr)
-			list.append(DeviceInfostr)
-		serverList['values'] = list
-		serverList['width'] = maxWidth
+	def updateHostList():
+		window.updateHostList(DeviceInfoList)
+
+	def restartMulticastReceiver():
+		global mMulticastReceiver
+		mMulticastReceiver.terminate()
+		mMulticastReceiver = MulticastReceiver(True, onMulticastReceive)
+		mMulticastReceiver.start()
 
 	checkDeviceInfosThread = threading.Thread(target = checkDeviceInfos, daemon=True)
 	checkDeviceInfosThread.start()
-
 	mMulticastReceiver = MulticastReceiver(True, onMulticastReceive)
 	mMulticastReceiver.start()
 
-	############################################
+	window.delegate["restartMulticastReceiver"] = restartMulticastReceiver
+	########################################################################	
 	# ClientSocket
 	StatusDict = {
 		1: "CONNECTED",
@@ -177,35 +188,52 @@ if __name__ == '__main__':
 		3: "FAILED",
 		4: "DISCONNECTED"
 	}
+	mClientSocket = None
+	Client_temp_data = {}
 
 	def onStatusChange(data):
-		status = StatusDict.get(data, "Invalid season")
-		statusText["text"] = status
+		status = "Status:  " + StatusDict.get(data, "Invalid season")
 		if data == ClientSocket.CONNECTED or data == ClientSocket.CONNECTING:
-			connectBTN['text'] = "Disconnect"
+			btnStr = "Disconnect"
 		elif data == ClientSocket.FAILED or data == ClientSocket.DISCONNECTED:
-			connectBTN['text'] = "Connect"
+			btnStr = "Connect"
 
-		print(status)
+		window.onStatusChange(status, btnStr)
+		print(status, btnStr)
+
+	def getSplitCommand(index, key):
+		splitCommand = {
+			"command": CommandList.DATA_SPLIT,
+			"index": index,
+			"key": key,
+			}
+		return splitCommand
 
 	def onClientSocketReceive(data):
 		print('receive data from Server, length:', len(data))
-		#print('Server:', data)
-		#logOutput['text'] += data + '\n'
 		try:
 			obj = json.loads(data)
 			print("ClientSocketReceive", obj["command"])
 			if obj["command"] == CommandList.GET_MEASURE:
-				print("ClientSocketReceive", obj["command"])
-				#print("x:", obj["result"][0])
-				#print("y:", obj["result"][1])
-				#print("z:", obj["result"][2])
-				#N = 10
-				#T = 1.0 / 12800.0
-				#y_f = np.fft.fft(obj["result"][0])
-				#x_f = np.linspace(0.0, 100,10)
-				#plt.plot(x_f, y_f)
-				#plt.show()
+				window.SetDrawData(obj)
+			elif obj["command"] == CommandList.DATA_SPLIT:
+				index = obj["index"]
+				key = obj["key"]
+				length = obj["length"]
+				if index == 0:
+					Client_temp_data[key] = []
+
+				Client_temp_data[key].append(obj["data"])
+				index = index+1
+
+				splitCommand = getSplitCommand(index, key)
+				sendCommand(splitCommand)
+
+				if index == length:
+					objStr = ''.join(Client_temp_data[key])
+					del Client_temp_data[key]
+					onClientSocketReceive(objStr)
+
 		except Exception as e:
 			print("json parsing error", e)
 
@@ -220,7 +248,55 @@ if __name__ == '__main__':
 		if mClientSocket:
 			mClientSocket.terminate()
 
+	def connectServer():
+		Host = window.getHostName()
+		Port = window.getPortNumber()
 
+		global mClientSocket
 
-	############################################
-	root.mainloop()
+		if mClientSocket and mClientSocket.STATUS <= 2:
+			print("do disconnect")
+			disconnectClientSocket()
+		elif Host and Port:
+			print("do connect", Host, str(Port))
+			connectClientSocket(Host, Port)
+
+	def sendCommand(command):
+		global mClientSocket
+		if mClientSocket and mClientSocket.STATUS == ClientSocket.CONNECTED:
+			try:
+				mClientSocket.sendall(json.dumps(command).encode())
+			except Exception as e:
+				print("error:", e)
+
+	window.delegate["connectServer"] = connectServer
+
+	########################################################################
+	# Command
+	class CommandList():
+		SET_PORT = 1
+		SET_DEVICENAME = 2
+		GET_ALL_TELEMETRY = 3
+		GET_MEASURE = 4
+		DATA_SPLIT = 5
+
+	def getCommand(command):
+		CommandTemple = json.loads('{"command": 0}')
+		CommandTemple["command"] = command
+		return CommandTemple
+
+	def GetMeasure(acc, sampling_f, sampling_s):
+		command = getCommand(CommandList.GET_MEASURE)
+		command["acc_range"] = acc
+		command["sampling_f"] = sampling_f
+		command["sampling_s"] = sampling_s
+		print("GetMeasure:", acc, sampling_f, sampling_s)
+		sendCommand(command)
+
+	window.delegate["GetMeasure"] = GetMeasure
+	########################################################################
+	# Draw
+	########################################################################
+
+	window.show()
+	sys.exit(app.exec_())
