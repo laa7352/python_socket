@@ -14,11 +14,17 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 		"connectServer": None,
 		}
 
+	DrawData = None
+	Y_AXIS_Data_X = None
+	Y_AXIS_Data_Y = None
+	Y_AXIS_Data_Z = None
+	X_AXIS = None
+
 	def __init__(self):
 		super().__init__()
 		self.setupUi(self)
-		self.pushButton.clicked.connect(self.draw)
-		self.pushButton_2.clicked.connect(self.clear)
+		self.DrawTestBTN.clicked.connect(self.drawTest)
+		self.DrawClearBTN.clicked.connect(self.clear)
 		self.HostList.activated.connect(self.onHostClick)
 		self.RefreshHostListBTN.clicked.connect(self.RefresHostList)
 		self.ConnectBTN.clicked.connect(self.connectServer)
@@ -29,12 +35,18 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 		ipRange = "(?:[0-1]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])"   # Part of the regular expression
 		# Regulare expression
 		ipRegex = QtCore.QRegExp("^" + ipRange + "\\." + ipRange + "\\." + ipRange + "\\." + ipRange + "$")
-		ipValidator = QtGui.QRegExpValidator(ipRegex, self) 
+		ipValidator = QtGui.QRegExpValidator(ipRegex, self)
 		self.HostName.setValidator(ipValidator)
 
 		self.SampleSize.setValidator(self.onlyInt)
 
 		self.GetMeasureBTN.clicked.connect(self.GetMeasure)
+		self.DrawXBTN.clicked.connect(lambda: self.Draw(self.X_AXIS, self.Y_AXIS_Data_X))
+		self.DrawYBTN.clicked.connect(lambda: self.Draw(self.X_AXIS, self.Y_AXIS_Data_Y))
+		self.DrawZBTN.clicked.connect(lambda: self.Draw(self.X_AXIS, self.Y_AXIS_Data_Z))
+		self.DrawXBTN.setEnabled(False)
+		self.DrawYBTN.setEnabled(False)
+		self.DrawZBTN.setEnabled(False)
 
 	def updateHostList(self, list):
 		self.HostList.clear()
@@ -73,7 +85,31 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 		if self.delegate["GetMeasure"] and acc and sampling_f and sampling_s:
 			self.delegate["GetMeasure"](acc, sampling_f, sampling_s)
 
-	def draw(self):
+	def Draw(self, x, y):
+		self.graphicsView.plot(x, y)
+
+	def SetDrawData(self, obj):
+		DrawData = obj
+		N = obj["sampling_s"]  # sampling_s = 128000
+		T = 1.0 / float(obj["sampling_f"]) # sampling_f = 12800
+		self.X_AXIS = np.linspace(0.0, N*T, N)
+
+		yx = obj["result"][0] # x data
+		yx_f = np.fft.fft(yx)
+		self.Y_AXIS_Data_X = 1.0/N * np.abs(yx_f[:N//1])
+
+		yy = obj["result"][1] # y data
+		yy_f = np.fft.fft(yy)
+		self.Y_AXIS_Data_Y = 1.0/N * np.abs(yy_f[:N//1])
+
+		yz= obj["result"][2] # z data
+		yz_f = np.fft.fft(yz)
+		self.Y_AXIS_Data_Z = 1.0/N * np.abs(yz_f[:N//1])
+		self.DrawXBTN.setEnabled(True)
+		self.DrawYBTN.setEnabled(True)
+		self.DrawZBTN.setEnabled(True)
+
+	def drawTest(self):
 		x = np.random.normal(size=1000)
 		y = np.random.normal(size=(3,1000))
 		for i in range(3):
@@ -171,7 +207,6 @@ if __name__ == "__main__":
 			obj = json.loads(data)
 			print("ClientSocketReceive", obj["command"])
 			if obj["command"] == CommandList.GET_MEASURE:
-				print("ClientSocketReceive", obj["command"])
 				#print("x:", obj["result"][0])
 				#print("y:", obj["result"][1])
 				#print("z:", obj["result"][2])
@@ -181,6 +216,8 @@ if __name__ == "__main__":
 				#x_f = np.linspace(0.0, 100,10)
 				#plt.plot(x_f, y_f)
 				#plt.show()
+				window.SetDrawData(obj)
+
 		except Exception as e:
 			print("json parsing error", e)
 
@@ -213,8 +250,6 @@ if __name__ == "__main__":
 
 	########################################################################
 	# Command
-	############################################
-	# command
 	class CommandList():
 		SET_PORT = 1
 		SET_DEVICENAME = 2
@@ -228,18 +263,20 @@ if __name__ == "__main__":
 
 	def GetMeasure(acc, sampling_f, sampling_s):
 		command = getCommand(CommandList.GET_MEASURE)
-		command["acc_range"] = "16G"
-		command["sampling_f"] = 12800  # 12800Hz
-		command["sampling_s"] = 128000 # 12800 x 10 sec
+		command["acc_range"] = acc
+		command["sampling_f"] = sampling_f
+		command["sampling_s"] = sampling_s
 		print("GetMeasure:", acc, sampling_f, sampling_s)
-		#global mClientSocket
-		#if mClientSocket and mClientSocket.STATUS == ClientSocket.CONNECTED:
-		#	try:
-		#		mClientSocket.sendall(json.dumps(command).encode())
-		#	except Exception as e:
-		#		print("error:", e)
+		global mClientSocket
+		if mClientSocket and mClientSocket.STATUS == ClientSocket.CONNECTED:
+			try:
+				mClientSocket.sendall(json.dumps(command).encode())
+			except Exception as e:
+				print("error:", e)
 
 	window.delegate["GetMeasure"] = GetMeasure
+	########################################################################
+	# Draw
 	########################################################################
 
 	window.show()
